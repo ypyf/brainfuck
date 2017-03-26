@@ -12,7 +12,6 @@ fn main() {
                 let mut pc = 0;
                 let program = input.as_bytes();
                 while pc < program.len() {
-                    //println!("pc={} cell[{}]={}", pc, i, memory[i]);
                     match program[pc] {
                         b'+' => memory[i] += 1,
                         b'-' => memory[i] -= 1,
@@ -23,14 +22,9 @@ fn main() {
                         }
                         b'.' => print!("{}", memory[i] as u8 as char),
                         b',' => {
-                            let stdin = io::stdin();
-                            for byte in stdin.lock().bytes() {
-                                let c = byte.unwrap();
-                                if c == b'\n' {
-                                    break;
-                                }
-                                memory[i] = c as i8;
-                            }
+                            let mut input = String::new();
+                            io::stdin().read_line(&mut input).unwrap();
+                            memory[i] = input.as_bytes()[0] as i8
                         }
                         b'[' => {
                             if memory[i] == 0 {
