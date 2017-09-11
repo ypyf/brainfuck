@@ -1,11 +1,11 @@
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 
 fn main() {
     let mut memory: [i8; 30000] = [0; 30000];
     let mut i = 0;
     loop {
         print!("=> ");
-        io::stdout().flush();
+        io::stdout().flush().unwrap();
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {
             Ok(_) => {
