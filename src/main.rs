@@ -4,7 +4,7 @@ fn main() {
     let mut memory: [i8; 30000] = [0; 30000];
     let mut i = 0;
     loop {
-        print!("=> ");
+        print!("bf> ");
         io::stdout().flush().unwrap();
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {
