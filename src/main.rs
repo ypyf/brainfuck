@@ -43,9 +43,7 @@ fn eval(ctx: &mut Context, source: &str) {
     while ctx.pc < program.len() {
         match program[ctx.pc] {
             b'+' => ctx.memory[i] = ctx.memory[i].overflowing_add(1).0,
-
             b'-' => ctx.memory[i] -= 1,
-
             b'>' => i += 1,
             b'<' => {
                 assert!(i > 0);
