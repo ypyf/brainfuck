@@ -13,7 +13,7 @@ struct Error {
     message: &'static str,
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 enum Command {
     Inc,              // +
     Dec,              // -
@@ -23,6 +23,11 @@ enum Command {
     Write,            // .
     EnterLoop(usize), // [
     ExitLoop(usize),  // ]
+    Zero,             // [-]
+    SuperInc(u8),
+    SuperDec(u8),
+    SuperIncPtr(usize),
+    SuperDecPtr(usize),
 }
 
 struct Compiler {
@@ -35,7 +40,9 @@ impl Compiler {
     }
 
     pub fn compile(&mut self, source: &str) -> Result<&Vec<Command>, Error> {
-        self.generate_instructions(source)?.calculate_jump_address();
+        self.generate_instructions(source)?
+            .optimize_code()
+            .calculate_jump_address();
         Ok(&self.program)
     }
 
@@ -81,6 +88,7 @@ impl Compiler {
                     if let Some(top) = jumps.pop() {
                         std::mem::swap(top, command)
                     } else {
+                        // TODO handle error
                         todo!()
                     }
                 }
@@ -88,15 +96,105 @@ impl Compiler {
             }
             position += 1;
         }
+
+        if !jumps.is_empty() {
+            // TODO handle error
+            todo!()
+        }
         self
     }
+
+    fn optimize_code(&mut self) -> &mut Self {
+        let mut i: usize = 0;
+        let mut transformed: Vec<Command> = vec![];
+        while i < self.program.len() {
+            let command = self.program[i];
+            match command {
+                Command::Inc => merge_inc(&mut transformed, command),
+                Command::Dec => merge_dec(&mut transformed, command),
+                Command::IncPtr => merge_incptr(&mut transformed, command),
+                Command::DecPtr => merge_decptr(&mut transformed, command),
+                Command::EnterLoop(_) => {
+                    if self.program.len() - i >= 2 {
+                        match (self.program[i + 1], self.program[i + 2]) {
+                            (Command::Dec, Command::ExitLoop(_)) => {
+                                transformed.push(Command::Zero);
+                                i += 2
+                            }
+                            _ => transformed.push(command),
+                        }
+                    }
+                }
+                _ => transformed.push(command),
+            }
+            i += 1
+        }
+        self.program = transformed;
+        self
+    }
+}
+
+fn merge_inc(transformed: &mut Vec<Command>, command: Command) {
+    let mut superinstr = command;
+    if let Some(prev) = transformed.last() {
+        if *prev == command {
+            transformed.pop();
+            superinstr = Command::SuperInc(2)
+        } else if let Command::SuperInc(n) = *prev {
+            transformed.pop();
+            superinstr = Command::SuperInc(n + 1)
+        }
+    }
+    transformed.push(superinstr)
+}
+
+fn merge_dec(transformed: &mut Vec<Command>, command: Command) {
+    let mut superinstr = command;
+    if let Some(prev) = transformed.last() {
+        if *prev == command {
+            transformed.pop();
+            superinstr = Command::SuperDec(2)
+        } else if let Command::SuperDec(n) = *prev {
+            transformed.pop();
+            superinstr = Command::SuperDec(n + 1)
+        }
+    }
+    transformed.push(superinstr)
+}
+
+fn merge_incptr(transformed: &mut Vec<Command>, command: Command) {
+    let mut superinstr = command;
+    if let Some(prev) = transformed.last() {
+        if *prev == command {
+            transformed.pop();
+            superinstr = Command::SuperIncPtr(2)
+        } else if let Command::SuperIncPtr(n) = *prev {
+            transformed.pop();
+            superinstr = Command::SuperIncPtr(n + 1)
+        }
+    }
+    transformed.push(superinstr)
+}
+
+fn merge_decptr(transformed: &mut Vec<Command>, command: Command) {
+    let mut superinstr = command;
+    if let Some(prev) = transformed.last() {
+        if *prev == command {
+            transformed.pop();
+            superinstr = Command::SuperDecPtr(2)
+        } else if let Command::SuperDecPtr(n) = *prev {
+            transformed.pop();
+            superinstr = Command::SuperDecPtr(n + 1)
+        }
+    }
+    transformed.push(superinstr)
 }
 
 fn execute(ctx: &mut Context, program: &Vec<Command>) {
     let mut i = 0;
     while ctx.pc < program.len() {
         match program[ctx.pc] {
-            Command::Inc => ctx.memory[i] = ctx.memory[i].overflowing_add(1).0,
+            Command::Inc => ctx.memory[i] = ctx.memory[i].wrapping_add(1),
             Command::Dec => ctx.memory[i] -= 1,
             Command::IncPtr => i += 1,
             Command::DecPtr => i -= 1,
@@ -116,6 +214,11 @@ fn execute(ctx: &mut Context, program: &Vec<Command>) {
                     ctx.pc = disp
                 }
             }
+            Command::Zero => ctx.memory[i] = 0,
+            Command::SuperInc(n) => ctx.memory[i] = n.wrapping_add(ctx.memory[i]),
+            Command::SuperDec(n) => ctx.memory[i] -= n,
+            Command::SuperIncPtr(n) => i += n,
+            Command::SuperDecPtr(n) => i -= n,
         }
         ctx.pc += 1;
     }
