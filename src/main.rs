@@ -1,10 +1,10 @@
 use std::env;
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 
 #[derive(Debug)]
 struct Context {
-    memory: [u8; 30000],
+    memory: [i32; 30000],
     pc: usize,
 }
 
@@ -24,8 +24,8 @@ enum Command {
     EnterLoop(usize), // [
     ExitLoop(usize),  // ]
     Zero,             // [-]
-    SuperInc(u8),
-    SuperDec(u8),
+    SuperInc(i32),
+    SuperDec(i32),
     SuperIncPtr(usize),
     SuperDecPtr(usize),
 }
@@ -194,16 +194,19 @@ fn execute(ctx: &mut Context, program: &Vec<Command>) {
     let mut i = 0;
     while ctx.pc < program.len() {
         match program[ctx.pc] {
-            Command::Inc => ctx.memory[i] = ctx.memory[i].wrapping_add(1),
+            Command::Inc => ctx.memory[i] += 1,
             Command::Dec => ctx.memory[i] -= 1,
             Command::IncPtr => i += 1,
             Command::DecPtr => i -= 1,
             Command::Read => {
-                let mut input = String::new();
-                io::stdin().read_line(&mut input).unwrap();
-                ctx.memory[i] = input.as_bytes()[0]
+                ctx.memory[i] = std::io::stdin()
+                    .bytes()
+                    .next()
+                    .and_then(|ch| ch.ok())
+                    .map(|ch| ch as i32)
+                    .unwrap_or(0)
             }
-            Command::Write => print!("{}", ctx.memory[i] as char),
+            Command::Write => print!("{}", ctx.memory[i] as u8 as char),
             Command::EnterLoop(disp) => {
                 if ctx.memory[i] == 0 {
                     ctx.pc = disp
@@ -215,7 +218,7 @@ fn execute(ctx: &mut Context, program: &Vec<Command>) {
                 }
             }
             Command::Zero => ctx.memory[i] = 0,
-            Command::SuperInc(n) => ctx.memory[i] = n.wrapping_add(ctx.memory[i]),
+            Command::SuperInc(n) => ctx.memory[i] += n,
             Command::SuperDec(n) => ctx.memory[i] -= n,
             Command::SuperIncPtr(n) => i += n,
             Command::SuperDecPtr(n) => i -= n,
