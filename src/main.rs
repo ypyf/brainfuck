@@ -24,10 +24,9 @@ enum Command {
     EnterLoop(usize), // [
     ExitLoop(usize),  // ]
     Zero,             // [-]
-    SuperInc(i32),
-    SuperDec(i32),
-    SuperIncPtr(usize),
-    SuperDecPtr(usize),
+    Assign(usize, i32),
+    Add(usize, i32),
+    MovePtr(isize),
 }
 
 struct Compiler {
@@ -139,10 +138,10 @@ fn merge_inc(transformed: &mut Vec<Command>, command: Command) {
     if let Some(prev) = transformed.last() {
         if *prev == command {
             transformed.pop();
-            superinstr = Command::SuperInc(2)
-        } else if let Command::SuperInc(n) = *prev {
+            superinstr = Command::Add(0, 2)
+        } else if let Command::Add(offset, n) = *prev {
             transformed.pop();
-            superinstr = Command::SuperInc(n + 1)
+            superinstr = Command::Add(offset, n + 1)
         }
     }
     transformed.push(superinstr)
@@ -153,10 +152,10 @@ fn merge_dec(transformed: &mut Vec<Command>, command: Command) {
     if let Some(prev) = transformed.last() {
         if *prev == command {
             transformed.pop();
-            superinstr = Command::SuperDec(2)
-        } else if let Command::SuperDec(n) = *prev {
+            superinstr = Command::Add(0, -2)
+        } else if let Command::Add(offset, n) = *prev {
             transformed.pop();
-            superinstr = Command::SuperDec(n + 1)
+            superinstr = Command::Add(offset, n - 1)
         }
     }
     transformed.push(superinstr)
@@ -167,10 +166,10 @@ fn merge_incptr(transformed: &mut Vec<Command>, command: Command) {
     if let Some(prev) = transformed.last() {
         if *prev == command {
             transformed.pop();
-            superinstr = Command::SuperIncPtr(2)
-        } else if let Command::SuperIncPtr(n) = *prev {
+            superinstr = Command::MovePtr(2)
+        } else if let Command::MovePtr(n) = *prev {
             transformed.pop();
-            superinstr = Command::SuperIncPtr(n + 1)
+            superinstr = Command::MovePtr(n + 1)
         }
     }
     transformed.push(superinstr)
@@ -181,10 +180,10 @@ fn merge_decptr(transformed: &mut Vec<Command>, command: Command) {
     if let Some(prev) = transformed.last() {
         if *prev == command {
             transformed.pop();
-            superinstr = Command::SuperDecPtr(2)
-        } else if let Command::SuperDecPtr(n) = *prev {
+            superinstr = Command::MovePtr(-2)
+        } else if let Command::MovePtr(n) = *prev {
             transformed.pop();
-            superinstr = Command::SuperDecPtr(n + 1)
+            superinstr = Command::MovePtr(n - 1)
         }
     }
     transformed.push(superinstr)
@@ -218,10 +217,9 @@ fn execute(ctx: &mut Context, program: &Vec<Command>) {
                 }
             }
             Command::Zero => ctx.memory[i] = 0,
-            Command::SuperInc(n) => ctx.memory[i] += n,
-            Command::SuperDec(n) => ctx.memory[i] -= n,
-            Command::SuperIncPtr(n) => i += n,
-            Command::SuperDecPtr(n) => i -= n,
+            Command::Assign(offset, n) => ctx.memory[i + offset] = n,
+            Command::Add(offset, n) => ctx.memory[i + offset] += n,
+            Command::MovePtr(offset) => i += offset as usize,
         }
         ctx.pc += 1;
     }
