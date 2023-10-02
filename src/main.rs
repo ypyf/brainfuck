@@ -1,223 +1,217 @@
 use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
+use std::str::Chars;
 
 #[derive(Debug)]
 struct Context {
     memory: [i32; 30000],
+    i: isize,
     pc: usize,
 }
 
-#[derive(Debug)]
+impl Context {
+    pub fn get(&self, offset: isize) -> i32 {
+        self.memory[(self.i + offset) as usize]
+    }
+
+    pub fn set(&mut self, offset: isize, value: i32) {
+        self.memory[(self.i + offset) as usize] = value
+    }
+
+    pub fn add(&mut self, offset: isize, value: i32) {
+        self.memory[(self.i + offset) as usize] += value
+    }
+
+    pub fn move_ptr(&mut self, offset: isize) {
+        self.i += offset
+    }
+}
+
+#[derive(Debug, PartialEq)]
 struct Error {
     message: &'static str,
 }
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Debug, Clone)]
 enum Command {
-    Inc,              // +
-    Dec,              // -
-    IncPtr,           // >
-    DecPtr,           // <
-    Read,             // ,
-    Write,            // .
-    EnterLoop(usize), // [
-    ExitLoop(usize),  // ]
-    Zero,             // [-]
-    Add(usize, i32),
-    MovePtr(isize),
+    Add(isize, i32), // +/-
+    MovePtr(isize),  // >/<
+    Output(isize),   // ,
+    Input(isize),    // .
+    Loop(Vec<Command>),
+    If(Vec<Command>),
 }
 
-struct Compiler {
-    pub program: Vec<Command>,
-}
+struct Compiler {}
 
 impl Compiler {
     pub fn new() -> Self {
-        Compiler { program: vec![] }
+        Compiler {}
     }
 
-    pub fn compile(&mut self, source: &str) -> Result<&Vec<Command>, Error> {
-        self.generate_instructions(source)?
-            .optimize_code()
-            .calculate_jump_address();
-        Ok(&self.program)
+    pub fn compile(&mut self, source: &str) -> Result<Vec<Command>, Error> {
+        let mut result = Compiler::parse(source.chars())?;
+        result = Compiler::optimize(&result);
+        Ok(result)
     }
 
-    fn generate_instructions(&mut self, source: &str) -> Result<&mut Self, Error> {
-        let mut position: usize = 0;
-        self.program = source
-            .chars()
-            .filter_map(|ch| {
-                let command = match ch {
-                    '+' => Some(Command::Inc),
-                    '-' => Some(Command::Dec),
-                    '>' => Some(Command::IncPtr),
-                    '<' => Some(Command::DecPtr),
-                    ',' => Some(Command::Read),
-                    '.' => Some(Command::Write),
-                    '[' => Some(Command::EnterLoop(0)),
-                    ']' => Some(Command::ExitLoop(0)),
-                    _ => None,
-                };
-
-                if command.is_some() {
-                    position += 1
+    fn parse(mut chars: Chars<'_>) -> Result<Vec<Command>, Error> {
+        let mut result: Vec<Command> = vec![];
+        while let Some(ch) = chars.next() {
+            let cmd = if let Some(cmd) = Compiler::gen_command(ch) {
+                cmd
+            } else {
+                match ch {
+                    '[' => {
+                        let body = Compiler::parse_body(&mut chars)?;
+                        Command::Loop(body)
+                    }
+                    ']' => {
+                        return Err(Error {
+                            message: "Extra loop closing",
+                        })
+                    }
+                    _ => continue, // ignore other characters
                 }
+            };
 
-                command
-            })
-            .collect();
+            result.push(cmd);
+        }
 
-        Ok(self)
+        Ok(result)
     }
 
-    fn calculate_jump_address(&mut self) -> &mut Self {
-        let mut position: usize = 0;
-        let mut jumps: Vec<&mut Command> = vec![];
-        for command in &mut self.program {
+    fn parse_body(mut chars: &mut Chars<'_>) -> Result<Vec<Command>, Error> {
+        let mut result: Vec<Command> = vec![];
+        while let Some(ch) = chars.next() {
+            let cmd = if let Some(cmd) = Compiler::gen_command(ch) {
+                cmd
+            } else {
+                match ch {
+                    '[' => {
+                        let body = Compiler::parse_body(&mut chars)?;
+                        Command::Loop(body)
+                    }
+                    ']' => return Ok(result),
+                    _ => continue, // ignore other characters
+                }
+            };
+
+            result.push(cmd);
+        }
+
+        Err(Error {
+            message: "Unclosed loop",
+        })
+    }
+
+    fn gen_command(ch: char) -> Option<Command> {
+        match ch {
+            '+' => Some(Command::Add(0, 1)),
+            '-' => Some(Command::Add(0, -1)),
+            '>' => Some(Command::MovePtr(1)),
+            '<' => Some(Command::MovePtr(-1)),
+            ',' => Some(Command::Input(0)),
+            '.' => Some(Command::Output(0)),
+            _ => None,
+        }
+    }
+
+    fn optimize(code: &Vec<Command>) -> Vec<Command> {
+        let mut result: Vec<Command> = vec![];
+        let mut ptr_offset = 0;
+        for command in code {
             match command {
-                Command::EnterLoop(_) => {
-                    *command = Command::ExitLoop(position);
-                    jumps.push(command)
-                }
-                Command::ExitLoop(_) => {
-                    *command = Command::EnterLoop(position);
-                    if let Some(top) = jumps.pop() {
-                        std::mem::swap(top, command)
-                    } else {
-                        // TODO handle error
-                        todo!()
+                Command::Add(offset, cmd_value) => {
+                    let actual_offset = offset + ptr_offset;
+                    let mut fused = false;
+                    if let Some(prev) = result.last_mut() {
+                        fused = Compiler::fuse_add(prev, actual_offset, *cmd_value)
+                    }
+                    if !fused {
+                        result.push(Command::Add(actual_offset, *cmd_value))
                     }
                 }
-                _ => (),
-            }
-            position += 1;
-        }
-
-        if !jumps.is_empty() {
-            // TODO handle error
-            todo!()
-        }
-        self
-    }
-
-    fn optimize_code(&mut self) -> &mut Self {
-        let mut i: usize = 0;
-        let mut transformed: Vec<Command> = vec![];
-        while i < self.program.len() {
-            let command = self.program[i];
-            match command {
-                Command::Inc => merge_inc(&mut transformed, command),
-                Command::Dec => merge_dec(&mut transformed, command),
-                Command::IncPtr => merge_incptr(&mut transformed, command),
-                Command::DecPtr => merge_decptr(&mut transformed, command),
-                Command::EnterLoop(_) => {
-                    if self.program.len() - i >= 2 {
-                        match (self.program[i + 1], self.program[i + 2]) {
-                            (Command::Dec, Command::ExitLoop(_)) => {
-                                transformed.push(Command::Zero);
-                                i += 2
-                            }
-                            _ => transformed.push(command),
-                        }
+                Command::MovePtr(offset) => ptr_offset += offset,
+                Command::Input(offset) => result.push(Command::Input(offset + ptr_offset)),
+                Command::Output(offset) => result.push(Command::Output(offset + ptr_offset)),
+                _ => {
+                    if ptr_offset != 0 {
+                        result.push(Command::MovePtr(ptr_offset));
+                        ptr_offset = 0
                     }
+                    result.extend(Compiler::optimize_loop(command))
                 }
-                _ => transformed.push(command),
             }
-            i += 1
         }
-        self.program = transformed;
-        self
-    }
-}
 
-fn merge_inc(transformed: &mut Vec<Command>, command: Command) {
-    let mut superinstr = command;
-    if let Some(prev) = transformed.last() {
-        if *prev == command {
-            transformed.pop();
-            superinstr = Command::Add(0, 2)
-        } else if let Command::Add(offset, n) = *prev {
-            transformed.pop();
-            superinstr = Command::Add(offset, n + 1)
+        if ptr_offset != 0 {
+            result.push(Command::MovePtr(ptr_offset))
         }
+        result
     }
-    transformed.push(superinstr)
-}
 
-fn merge_dec(transformed: &mut Vec<Command>, command: Command) {
-    let mut superinstr = command;
-    if let Some(prev) = transformed.last() {
-        if *prev == command {
-            transformed.pop();
-            superinstr = Command::Add(0, -2)
-        } else if let Command::Add(offset, n) = *prev {
-            transformed.pop();
-            superinstr = Command::Add(offset, n - 1)
+    fn optimize_loop(command: &Command) -> Vec<Command> {
+        match command {
+            Command::Loop(commands) => {
+                if let Some(result) = Compiler::optimize_simple_loop(commands) {
+                    result
+                } else {
+                    let cmd = Compiler::optimize_complex_loop(commands)
+                        .unwrap_or(Command::Loop(Compiler::optimize(commands)));
+                    vec![cmd]
+                }
+            }
+            Command::If(commands) => vec![Command::If(Compiler::optimize(commands))],
+            _ => unreachable!(),
         }
     }
-    transformed.push(superinstr)
-}
 
-fn merge_incptr(transformed: &mut Vec<Command>, command: Command) {
-    let mut superinstr = command;
-    if let Some(prev) = transformed.last() {
-        if *prev == command {
-            transformed.pop();
-            superinstr = Command::MovePtr(2)
-        } else if let Command::MovePtr(n) = *prev {
-            transformed.pop();
-            superinstr = Command::MovePtr(n + 1)
-        }
+    fn optimize_simple_loop(commands: &Vec<Command>) -> Option<Vec<Command>> {
+        None
     }
-    transformed.push(superinstr)
-}
 
-fn merge_decptr(transformed: &mut Vec<Command>, command: Command) {
-    let mut superinstr = command;
-    if let Some(prev) = transformed.last() {
-        if *prev == command {
-            transformed.pop();
-            superinstr = Command::MovePtr(-2)
-        } else if let Command::MovePtr(n) = *prev {
-            transformed.pop();
-            superinstr = Command::MovePtr(n - 1)
-        }
+    fn optimize_complex_loop(commands: &Vec<Command>) -> Option<Command> {
+        None
     }
-    transformed.push(superinstr)
+
+    fn fuse_add(prev: &mut Command, offset: isize, value: i32) -> bool {
+        let mut fused = false;
+        match prev {
+            Command::Add(prev_offset, prev_value) => {
+                if *prev_offset == offset {
+                    *prev_value += value;
+                    fused = true
+                }
+            }
+            _ => (),
+        }
+        fused
+    }
 }
 
 fn execute(ctx: &mut Context, program: &Vec<Command>) {
-    let mut i = 0;
-    while ctx.pc < program.len() {
-        match program[ctx.pc] {
-            Command::Inc => ctx.memory[i] += 1,
-            Command::Dec => ctx.memory[i] -= 1,
-            Command::IncPtr => i += 1,
-            Command::DecPtr => i -= 1,
-            Command::Read => {
-                ctx.memory[i] = std::io::stdin()
+    for i in 0..program.len() {
+        match program[i] {
+            Command::Add(offset, value) => ctx.add(offset, value),
+            Command::MovePtr(offset) => ctx.move_ptr(offset),
+            Command::Input(offset) => {
+                let ch = std::io::stdin()
                     .bytes()
                     .next()
                     .and_then(|ch| ch.ok())
                     .map(|ch| ch as i32)
-                    .unwrap_or(0)
+                    .unwrap_or(0);
+                ctx.set(offset, ch)
             }
-            Command::Write => print!("{}", ctx.memory[i] as u8 as char),
-            Command::EnterLoop(disp) => {
-                if ctx.memory[i] == 0 {
-                    ctx.pc = disp
+            Command::Output(offset) => print!("{}", ctx.get(offset) as u8 as char),
+            Command::Loop(ref commands) => {
+                while ctx.get(0) != 0 {
+                    execute(ctx, commands)
                 }
             }
-            Command::ExitLoop(disp) => {
-                if ctx.memory[i] != 0 {
-                    ctx.pc = disp
-                }
-            }
-            Command::Zero => ctx.memory[i] = 0,
-            Command::Add(offset, n) => ctx.memory[i + offset] += n,
-            Command::MovePtr(offset) => i = (i as isize + offset) as usize,
+            _ => todo!(),
         }
         ctx.pc += 1;
     }
@@ -226,12 +220,13 @@ fn execute(ctx: &mut Context, program: &Vec<Command>) {
 fn run(source: &str) {
     let mut ctx = Context {
         memory: [0; 30000],
+        i: 0,
         pc: 0,
     };
     let mut compiler = Compiler::new();
     match compiler.compile(&source) {
         Ok(program) => {
-            execute(&mut ctx, program)
+            execute(&mut ctx, &program)
         }
         Err(err) => println!("error: {}", err.message),
     }
@@ -253,5 +248,39 @@ fn main() {
                 Err(err) => println!("error: {}", err),
             }
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_parses() {
+        let result = vec![
+            Command::Add(0, 1),
+            Command::Add(0, -1),
+            Command::MovePtr(1),
+            Command::MovePtr(-1),
+            Command::Input(0),
+            Command::Output(0),
+        ];
+        assert_eq!(Compiler::parse("+-><,.".chars()), Ok(result));
+    }
+
+    #[test]
+    fn it_parses_loop() {
+        let result = vec![Command::Loop(vec![Command::Add(0, -1)])];
+        assert_eq!(Compiler::parse("[-]".chars()), Ok(result));
+    }
+
+    #[test]
+    fn it_parses_nested_loops() {
+        let result = vec![Command::Loop(vec![
+            Command::Add(0, 1),
+            Command::Loop(vec![Command::Add(0, -1)]),
+            Command::Add(0, 1),
+        ])];
+        assert_eq!(Compiler::parse("[+[-]+]".chars()), Ok(result));
     }
 }
