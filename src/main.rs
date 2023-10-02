@@ -59,7 +59,7 @@ impl Compiler {
     fn parse(mut chars: Chars<'_>) -> Result<Vec<Command>, Error> {
         let mut result: Vec<Command> = vec![];
         while let Some(ch) = chars.next() {
-            let cmd = if let Some(cmd) = Compiler::gen_command(ch) {
+            let cmd = if let Some(cmd) = Compiler::translate_command(ch) {
                 cmd
             } else {
                 match ch {
@@ -85,7 +85,7 @@ impl Compiler {
     fn parse_body(mut chars: &mut Chars<'_>) -> Result<Vec<Command>, Error> {
         let mut result: Vec<Command> = vec![];
         while let Some(ch) = chars.next() {
-            let cmd = if let Some(cmd) = Compiler::gen_command(ch) {
+            let cmd = if let Some(cmd) = Compiler::translate_command(ch) {
                 cmd
             } else {
                 match ch {
@@ -106,7 +106,7 @@ impl Compiler {
         })
     }
 
-    fn gen_command(ch: char) -> Option<Command> {
+    fn translate_command(ch: char) -> Option<Command> {
         match ch {
             '+' => Some(Command::Add(0, 1)),
             '-' => Some(Command::Add(0, -1)),
@@ -118,19 +118,19 @@ impl Compiler {
         }
     }
 
-    fn optimize(code: &Vec<Command>) -> Vec<Command> {
+    fn optimize(program: &[Command]) -> Vec<Command> {
         let mut result: Vec<Command> = vec![];
         let mut ptr_offset = 0;
-        for command in code {
-            match command {
+        for cmd in program {
+            match *cmd {
                 Command::Add(offset, cmd_value) => {
                     let actual_offset = offset + ptr_offset;
                     let mut fused = false;
                     if let Some(prev) = result.last_mut() {
-                        fused = Compiler::fuse_add(prev, actual_offset, *cmd_value)
+                        fused = Compiler::fuse_add(prev, actual_offset, cmd_value)
                     }
                     if !fused {
-                        result.push(Command::Add(actual_offset, *cmd_value))
+                        result.push(Command::Add(actual_offset, cmd_value))
                     }
                 }
                 Command::MovePtr(offset) => ptr_offset += offset,
@@ -141,7 +141,7 @@ impl Compiler {
                         result.push(Command::MovePtr(ptr_offset));
                         ptr_offset = 0
                     }
-                    result.extend(Compiler::optimize_loop(command))
+                    result.extend(Compiler::optimize_loop(cmd))
                 }
             }
         }
@@ -168,11 +168,11 @@ impl Compiler {
         }
     }
 
-    fn optimize_simple_loop(commands: &Vec<Command>) -> Option<Vec<Command>> {
+    fn optimize_simple_loop(commands: &[Command]) -> Option<Vec<Command>> {
         None
     }
 
-    fn optimize_complex_loop(commands: &Vec<Command>) -> Option<Command> {
+    fn optimize_complex_loop(commands: &[Command]) -> Option<Command> {
         None
     }
 
@@ -191,9 +191,9 @@ impl Compiler {
     }
 }
 
-fn execute(ctx: &mut Context, program: &Vec<Command>) {
-    for i in 0..program.len() {
-        match program[i] {
+fn execute(ctx: &mut Context, program: &[Command]) {
+    for cmd in program {
+        match *cmd {
             Command::Add(offset, value) => ctx.add(offset, value),
             Command::MovePtr(offset) => ctx.move_ptr(offset),
             Command::Input(offset) => {
