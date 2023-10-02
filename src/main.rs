@@ -24,7 +24,6 @@ enum Command {
     EnterLoop(usize), // [
     ExitLoop(usize),  // ]
     Zero,             // [-]
-    Assign(usize, i32),
     Add(usize, i32),
     MovePtr(isize),
 }
@@ -217,9 +216,8 @@ fn execute(ctx: &mut Context, program: &Vec<Command>) {
                 }
             }
             Command::Zero => ctx.memory[i] = 0,
-            Command::Assign(offset, n) => ctx.memory[i + offset] = n,
             Command::Add(offset, n) => ctx.memory[i + offset] += n,
-            Command::MovePtr(offset) => i += offset as usize,
+            Command::MovePtr(offset) => i = (i as isize + offset) as usize,
         }
         ctx.pc += 1;
     }
@@ -233,7 +231,6 @@ fn run(source: &str) {
     let mut compiler = Compiler::new();
     match compiler.compile(&source) {
         Ok(program) => {
-            // println!("{:?}", program);
             execute(&mut ctx, program)
         }
         Err(err) => println!("error: {}", err.message),
