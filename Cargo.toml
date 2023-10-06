@@ -2,5 +2,7 @@
 name = "bf"
 version = "0.3.0"
 authors = ["ypyf <t34@qq.com>"]
+edition = "2021"
 
-[dependencies]
+[profile.release]
+panic = 'abort'
