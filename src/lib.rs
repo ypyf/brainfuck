@@ -3,14 +3,14 @@ use std::io::Read;
 use std::str::Chars;
 
 #[derive(Debug)]
-struct Context {
+struct Machine {
     memory: [u8; 30000],
     i: i32,
 }
 
-impl Context {
+impl Machine {
     pub fn new() -> Self {
-        Context {
+        Machine {
             memory: [0; 30000],
             i: 1000, // keeps the pointer from out of bound
         }
@@ -31,6 +31,47 @@ impl Context {
 
     pub fn move_ptr(&mut self, offset: i32) {
         self.i += offset
+    }
+
+    fn execute(&mut self, program: &[Command]) {
+        for cmd in program {
+            match *cmd {
+                Command::Add(offset, value) => self.add(offset, value),
+                Command::MultAdd(src, dest, value) => {
+                    let tmp = self.get(src) * value;
+                    self.add(dest, tmp);
+                }
+                Command::Assign(offset, value) => self.set(offset, value),
+                Command::MultAssign(src, dest, value) => {
+                    let tmp = self.get(src) * value;
+                    self.set(dest, tmp);
+                }
+                Command::MovePtr(offset) => self.move_ptr(offset),
+                Command::Input(offset) => {
+                    let ch = std::io::stdin()
+                        .bytes()
+                        .next()
+                        .and_then(|ch| ch.ok())
+                        .map(|ch| ch as i32)
+                        .unwrap_or(0);
+                    self.set(offset, ch)
+                }
+                Command::Output(offset) => {
+                    let ch = self.get(offset) as u8 as char;
+                    print!("{}", ch);
+                }
+                Command::If(ref commands) => {
+                    if self.get(0) != 0 {
+                        self.execute(commands)
+                    }
+                }
+                Command::Loop(ref commands) => {
+                    while self.get(0) != 0 {
+                        self.execute(commands)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -315,51 +356,10 @@ impl Compiler {
     }
 }
 
-fn execute(ctx: &mut Context, program: &[Command]) {
-    for cmd in program {
-        match *cmd {
-            Command::Add(offset, value) => ctx.add(offset, value),
-            Command::MultAdd(src, dest, value) => {
-                let tmp = ctx.get(src) * value;
-                ctx.add(dest, tmp);
-            }
-            Command::Assign(offset, value) => ctx.set(offset, value),
-            Command::MultAssign(src, dest, value) => {
-                let tmp = ctx.get(src) * value;
-                ctx.set(dest, tmp);
-            }
-            Command::MovePtr(offset) => ctx.move_ptr(offset),
-            Command::Input(offset) => {
-                let ch = std::io::stdin()
-                    .bytes()
-                    .next()
-                    .and_then(|ch| ch.ok())
-                    .map(|ch| ch as i32)
-                    .unwrap_or(0);
-                ctx.set(offset, ch)
-            }
-            Command::Output(offset) => {
-                let ch = ctx.get(offset) as u8 as char;
-                print!("{}", ch);
-            }
-            Command::If(ref commands) => {
-                if ctx.get(0) != 0 {
-                    execute(ctx, commands)
-                }
-            }
-            Command::Loop(ref commands) => {
-                while ctx.get(0) != 0 {
-                    execute(ctx, commands)
-                }
-            }
-        }
-    }
-}
-
 pub fn run(source: &str) {
-    let mut ctx = Context::new();
+    let mut machine = Machine::new();
     match Compiler::compile(&source) {
-        Ok(program) => execute(&mut ctx, &program),
+        Ok(program) => machine.execute(&program),
         Err(err) => println!("error: {}", err.message),
     }
 }
@@ -407,8 +407,8 @@ mod tests {
 
         let program = Compiler::compile("+++[.>+++[>>>+<<<-]<-]").unwrap();
         assert_eq!(program, result);
-        let mut ctx = Context::new();
-        execute(&mut ctx, &program);
-        assert_eq!(ctx.memory[0], 0);
+        let mut machine = Machine::new();
+        machine.execute(&program);
+        assert_eq!(machine.memory[0], 0);
     }
 }

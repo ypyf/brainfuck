@@ -1,20 +1,14 @@
 # bf
 A Brainfuck interpreter.
 
-## Building
-
-```bash
-cargo build --release
-```
-
 ## Usage
 
-To start a interactive REPL, just run `bf` without arguments:
+To launch a REPL, just run `bf` without any argument:
 ```bash
 bf
 ```
 
-Using command line argument, you could run a brainfuck example program:
+Or you could run a Brainfuck program like this:
 
 ```bash
 bf examples/helloworld.bf
