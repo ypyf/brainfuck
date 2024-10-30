@@ -2,8 +2,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::str::Chars;
 
+#[path = "./gen-c.rs"]
+pub mod gen_c;
+
 #[derive(Debug)]
-struct Machine {
+pub struct Machine {
     memory: [u8; 30000],
     i: i32,
 }
@@ -33,7 +36,7 @@ impl Machine {
         self.i += offset
     }
 
-    fn execute(&mut self, program: &[Command]) {
+    pub fn execute(&mut self, program: &[Command]) {
         for cmd in program {
             match *cmd {
                 Command::Add(offset, value) => self.add(offset, value),
@@ -76,12 +79,12 @@ impl Machine {
 }
 
 #[derive(Debug, PartialEq)]
-struct Error {
-    message: &'static str,
+pub struct Error {
+    pub message: &'static str,
 }
 
 #[derive(PartialEq, Debug, Clone)]
-enum Command {
+pub enum Command {
     Assign(i32, i32),          // [a] = b
     MultAssign(i32, i32, i32), // [b] = [a] * c
     MultAdd(i32, i32, i32),    // [b] += [a] * c
@@ -93,7 +96,7 @@ enum Command {
     Loop(Vec<Command>),
 }
 
-struct Compiler;
+pub struct Compiler;
 
 impl Compiler {
     pub fn compile(source: &str) -> Result<Vec<Command>, Error> {
@@ -356,14 +359,6 @@ impl Compiler {
     }
 }
 
-pub fn run(source: &str) {
-    let mut machine = Machine::new();
-    match Compiler::compile(&source) {
-        Ok(program) => machine.execute(&program),
-        Err(err) => println!("error: {}", err.message),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::Command::*;
@@ -404,7 +399,6 @@ mod tests {
                 Add(0, -1),
             ]),
         ];
-
         let program = Compiler::compile("+++[.>+++[>>>+<<<-]<-]").unwrap();
         assert_eq!(program, result);
         let mut machine = Machine::new();
