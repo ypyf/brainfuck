@@ -3,6 +3,7 @@ use std::{
     env,
     fs::{self, File},
     io::{self, Write},
+    path::Path,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -42,7 +43,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match Compiler::compile(&source) {
                     Ok(program) => {
                         let code = bf_to_c(&program);
-                        let mut file = File::create(format!("{}.c", filename))?;
+                        let stem = Path::new(filename).file_stem().unwrap().to_str().unwrap();
+                        let mut file = File::create(format!("{}.c", stem))?;
                         file.write_all(code.as_bytes())?;
                     }
                     Err(err) => println!("error: {}", err.message),
