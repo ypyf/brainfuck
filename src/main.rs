@@ -1,4 +1,4 @@
-use bf::{gen_c::bf_to_c, Compiler, Machine};
+use bf::{gen_c::transpile, Compiler, Machine};
 use std::{
     env,
     fs::{self, File},
@@ -42,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let source = fs::read_to_string(filename).unwrap();
                 match Compiler::compile(&source) {
                     Ok(program) => {
-                        let code = bf_to_c(&program);
+                        let code = transpile(&program);
                         let stem = Path::new(filename).file_stem().unwrap().to_str().unwrap();
                         let mut file = File::create(format!("{}.c", stem))?;
                         file.write_all(code.as_bytes())?;
@@ -54,10 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("error: no input files")
             }
         },
-        Some(cmd) => {
-            eprintln!("error: unknown command: {}", cmd)
-        }
-        None => {
+        _ => {
             println!("Usage: bf [command] [options]\n");
             println!("Commands:\n");
             println!("  run\t\tExecute a brainfuck script");

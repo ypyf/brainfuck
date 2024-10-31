@@ -2,7 +2,7 @@ use crate::Command;
 
 fn emit(code: &str, level: i32) -> String {
     let mut result = String::new();
-    for _i in 0..level {
+    for _ in 0..level {
         result += "\t"
     }
     result += code;
@@ -18,7 +18,7 @@ fn sign(value: i32) -> String {
     }
 }
 
-pub fn bf_to_c(program: &[Command]) -> String {
+pub fn transpile(program: &[Command]) -> String {
     let mut result = String::new();
     result += &emit("#include <stdint.h>", 0);
     result += &emit("#include <stdio.h>", 0);
