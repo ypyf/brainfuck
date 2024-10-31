@@ -1,22 +1,6 @@
 use crate::Command;
 
-fn emit(code: &str, level: i32) -> String {
-    let mut result = String::new();
-    for _ in 0..level {
-        result += "\t"
-    }
-    result += code;
-    result += "\n";
-    result
-}
-
-fn sign(value: i32) -> String {
-    if value >= 0 {
-        "+".to_owned()
-    } else {
-        "-".to_owned()
-    }
-}
+use super::{emit, sign};
 
 pub fn transpile(program: &[Command]) -> String {
     let mut result = String::new();

@@ -2,8 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::str::Chars;
 
-#[path = "./gen-c.rs"]
-pub mod gen_c;
+pub mod generator;
 
 #[derive(Debug)]
 pub struct Machine {
