@@ -13,10 +13,7 @@ pub fn transpile_to(target: Target, program: &[Command]) -> String {
 }
 
 fn emit(code: &str, level: i32) -> String {
-    let mut result = String::new();
-    for _ in 0..level {
-        result += "\t"
-    }
+    let mut result ="\t".repeat(level as usize);
     result += code;
     result += "\n";
     result
