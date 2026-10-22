@@ -82,6 +82,12 @@ pub struct Error {
     pub message: &'static str,
 }
 
+enum MergeResult {
+    NotMerged,
+    Merged,
+    RemoveLast,
+}
+
 #[derive(PartialEq, Debug, Clone)]
 pub enum Command {
     Assign(i32, i32),          // [a] = b
@@ -197,13 +203,24 @@ impl Compiler {
                     result.push(Command::MultAssign(bp + src, bp + dest, value))
                 }
                 Command::Add(offset, cmd_value) => {
-                    let actual_offset = bp + offset;
-                    let mut fused = false;
-                    if let Some(prev) = result.last_mut() {
-                        fused = Compiler::merge_add(prev, actual_offset, cmd_value)
+                    // Eliminate no-op Add instructions
+                    if cmd_value.rem_euclid(256) == 0 {
+                        continue;
                     }
-                    if !fused {
-                        result.push(Command::Add(actual_offset, cmd_value))
+
+                    let actual_offset = bp + offset;
+                    let merge_result = result
+                        .last_mut()
+                        .map(|prev| Compiler::merge_add(prev, actual_offset, cmd_value))
+                        .unwrap_or(MergeResult::NotMerged);
+                    match merge_result {
+                        MergeResult::RemoveLast => {
+                            result.pop();
+                        }
+                        MergeResult::NotMerged => {
+                            result.push(Command::Add(actual_offset, cmd_value))
+                        }
+                        MergeResult::Merged => {}
                     }
                 }
                 Command::MultAdd(src, dest, value) => {
@@ -343,18 +360,19 @@ impl Compiler {
         Some(Command::If(result))
     }
 
-    fn merge_add(prev: &mut Command, offset: i32, value: i32) -> bool {
-        let mut fused = false;
+    fn merge_add(prev: &mut Command, offset: i32, value: i32) -> MergeResult {
         match prev {
-            Command::Add(prev_offset, prev_value) | Command::Assign(prev_offset, prev_value) => {
-                if *prev_offset == offset {
-                    *prev_value += value;
-                    fused = true
+            Command::Add(prev_offset, prev_value) | Command::Assign(prev_offset, prev_value)
+                if *prev_offset == offset =>
+            {
+                *prev_value += value;
+                match prev {
+                    Command::Add(_, v) if v.rem_euclid(256) == 0 => MergeResult::RemoveLast,
+                    _ => MergeResult::Merged,
                 }
             }
-            _ => (),
+            _ => MergeResult::NotMerged,
         }
-        fused
     }
 }
 
